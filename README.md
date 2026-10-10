@@ -32,7 +32,8 @@ Discord 侧的映射：
 ## 2. 构建插件
 
 ```bash
-cd ~/dev_code/dsh-plugin-discord
+git clone https://github.com/tjiisztiuv/dsh-plugin-discord.git
+cd dsh-plugin-discord
 npm install      # 或 pnpm install
 npm run build    # 生成 lib/
 ```
@@ -44,14 +45,16 @@ token 不写进配置文件，而是通过 dsh 的凭据系统读取（默认变
 - 写到 `~/.dsh/.env`：`DISCORD_BOT_TOKEN=xxxxx`
 - 或写到 `~/.dsh/.credentials.yaml`（dsh 本地凭据库）
 
+> `.env` 只在桌面端启动时读取一次：写入或修改后要**彻底退出（Cmd+Q）再重新打开**，只在插件页重新启用读不到新值。变量名要和配置里的 `tokenEnv` 完全一致。
+
 ## 4. 安装进 DeepSeek 桌面端
 
-**方式 A：桌面端界面**——侧边栏「插件」页 → 安装 → 填本地路径 `/Users/fuxiang/dev_code/dsh-plugin-discord`。
+**方式 A：桌面端界面**——侧边栏「插件」页 → 安装 → 填插件目录的绝对路径，例如 `/Users/you/code/dsh-plugin-discord`。
 
 **方式 B：命令行**（`dsh web` 或其他 profile）：
 
 ```bash
-dsh plugin --profile <profile> add /Users/fuxiang/dev_code/dsh-plugin-discord
+dsh plugin --profile <profile> add /path/to/dsh-plugin-discord
 ```
 
 本地路径以 link 方式安装，之后修改代码只需 `npm run build` 再在插件页里重新启用（或重启）即可。
@@ -66,7 +69,7 @@ dsh plugin --profile <profile> add /Users/fuxiang/dev_code/dsh-plugin-discord
     tokenEnv: DISCORD_BOT_TOKEN
     allowedUserIds: ['123456789012345678']     # 你的 Discord 用户 ID
     stateFile: !!js dshHomePath('discord', 'state.json')
-    defaultWorkspace: HappyLifeFinance          # 可选：没选工作区时默认用哪个（标题/路径/ID）
+    defaultWorkspace: my-project                # 可选：没选工作区时默认用哪个（标题/路径/ID）
     # allowedGuildIds: ['...']                  # 可选：只在这些服务器响应
     # allowedChannelIds: ['...']                # 可选：只在这些频道（及其线程）响应
 ```
@@ -152,4 +155,4 @@ npm run typecheck:compat   # 用旁边的 deepseek-harness 源码校验 src/dsh.
 
 - `ask_user_question`（模型向用户提问）目前只在桌面端作答。
 - 回复在每个模型步骤结束后整段发送，不做逐字流式编辑。
-- 设置 token 之后需要在插件页重新启用插件（或重启桌面端）才会上线。
+- token 写在 `~/.dsh/.env` 时需要彻底重启桌面端才会上线；写在 `~/.dsh/.credentials.yaml` 时在插件页重新启用即可。
