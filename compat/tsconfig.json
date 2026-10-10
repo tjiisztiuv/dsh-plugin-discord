@@ -1,0 +1,15 @@
+{
+  // Checks src/dsh.ts against the real Harness source in a sibling checkout
+  // (../deepseek-harness). Optional: only `npm run typecheck:compat` uses it.
+  "extends": "../../deepseek-harness/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noUnusedLocals": false,
+    "rewriteRelativeImportExtensions": false
+  },
+  "files": ["./surface.check.ts"]
+}

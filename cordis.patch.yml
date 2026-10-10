@@ -1,0 +1,10 @@
+# Inserted when a DeepSeek Harness profile selects this bundle.
+# Override the row by id in the profile's own cordis.patch.yml to configure it;
+# a patch replaces the whole `config`, so restate every key you keep.
+- insert:
+    - id: discord
+      name: dsh-plugin-discord
+      config:
+        tokenEnv: DISCORD_BOT_TOKEN
+        allowedUserIds: []
+        stateFile: !!js dshHomePath('discord', 'state.json')

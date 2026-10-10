@@ -1,0 +1,63 @@
+{
+  "name": "dsh-plugin-discord",
+  "description": "Discord bridge for DeepSeek Harness: drive any Workspace Session from Discord on your phone or desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "icon": "./icon.svg",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "discord"
+  ],
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "icon.svg",
+    "locale/*.json",
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:compat": "node scripts/typecheck-compat.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.4-0 <5",
+    "@deepseek-ai/dsh": ">=0.2.0-0 <0.3.0-0",
+    "@deepseek-ai/schemastery": ">=3.18.0-0 <4"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.1",
+    "@deepseek-ai/schemastery": "3.18.5-alpha.1",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
