@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Discord 遥控架构</title>
+<style>
+:root {
+  --bg: #F4F5FA;
+  --ink: #1B1F2E;
+  --muted: #687089;
+  --line: #D5D9E8;
+  --card: #FFFFFF;
+  --discord: #5865F2;
+  --discord-soft: #ECEEFE;
+  --ds: #4D6BFE;
+  --ds-soft: #EAEFFF;
+  --plugin: #FFF7E8;
+  --plugin-line: #F2A93B;
+  --plugin-ink: #8A5300;
+  --back: #12A16B;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1080px; height: 1440px; }
+body {
+  background: var(--bg);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+  color: var(--ink);
+  padding: 52px 64px 44px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.tag {
+  align-self: flex-start;
+  font-size: 22px; font-weight: 600; color: var(--ds);
+  background: var(--ds-soft); border-radius: 999px; padding: 8px 20px;
+}
+h1 { font-size: 52px; line-height: 1.22; font-weight: 800; margin-top: 18px; letter-spacing: -0.5px; }
+h1 .dc { color: var(--discord); }
+h1 .dsk { color: var(--ds); }
+.sub { font-size: 25px; color: var(--muted); margin-top: 10px; }
+
+/* Generic card */
+.card { background: var(--card); border: 2px solid var(--line); border-radius: 24px; }
+
+/* Tier 1: user */
+.user { margin-top: 30px; padding: 20px 28px; display: flex; align-items: center; gap: 24px; }
+.user .who { font-size: 30px; font-weight: 700; white-space: nowrap; }
+.user .who small { display: block; font-size: 20px; font-weight: 500; color: var(--muted); margin-top: 4px; }
+.maps { display: flex; flex-wrap: nowrap; gap: 10px; justify-content: flex-end; flex: 1; }
+.chip {
+  font-size: 21px; font-weight: 600; color: var(--discord);
+  background: var(--discord-soft); border-radius: 12px; padding: 8px 14px; white-space: nowrap;
+}
+
+/* Connectors */
+.link { position: relative; height: 76px; display: flex; justify-content: center; gap: 220px; }
+.arrow { position: relative; width: 4px; height: 100%; }
+.arrow::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: currentColor; }
+.arrow.down::after, .arrow.up::after {
+  content: ""; position: absolute; left: -9px; width: 0; height: 0;
+  border-left: 11px solid transparent; border-right: 11px solid transparent;
+}
+.arrow.down::after { bottom: -2px; border-top: 16px solid currentColor; }
+.arrow.up::after { top: -2px; border-bottom: 16px solid currentColor; }
+.arrow.down { color: var(--discord); }
+.arrow.up { color: var(--back); }
+.arrow.out { color: var(--ink); }
+.label {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 21px; font-weight: 600; white-space: nowrap;
+}
+.label.l { right: 18px; color: var(--discord); }
+.label.r { left: 18px; color: var(--back); }
+.label.c { left: 22px; color: var(--ink); line-height: 1.4; }
+.label.c em { font-style: normal; color: var(--back); display: block; }
+
+/* Tier 2: Discord cloud */
+.cloud {
+  background: var(--discord); color: #fff; border-radius: 24px;
+  padding: 22px 28px; display: flex; align-items: center; justify-content: space-between;
+}
+.cloud b { font-size: 30px; }
+.cloud span { font-size: 21px; opacity: .85; }
+
+/* Tier 3: the Mac */
+.mac { overflow: hidden; }
+.titlebar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 24px; border-bottom: 2px solid var(--line); background: #FAFBFE;
+}
+.dot { width: 14px; height: 14px; border-radius: 50%; }
+.titlebar b { font-size: 25px; margin-left: 12px; }
+.titlebar span { font-size: 20px; color: var(--muted); margin-left: auto; }
+.mac-body { padding: 22px 24px 24px; }
+
+.plugin {
+  background: var(--plugin); border: 2px solid var(--plugin-line); border-radius: 20px; padding: 18px 20px 20px;
+}
+.plugin-head { display: flex; align-items: baseline; gap: 14px; }
+.plugin-head b { font-size: 27px; color: var(--plugin-ink); }
+.plugin-head span { font-size: 20px; color: var(--plugin-ink); opacity: .8; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+.cell {
+  background: #fff; border-radius: 14px; padding: 13px 16px;
+  font-size: 22px; font-weight: 600; border: 1.5px solid #F5DDB4;
+}
+
+.mac .link { height: 64px; gap: 0; display: grid; grid-template-columns: 1fr 64px 1fr; }
+.mac .link .arrow { justify-self: center; }
+
+.row { display: grid; grid-template-columns: 1fr 64px 1fr; align-items: stretch; }
+.box { border-radius: 18px; padding: 18px 20px; }
+.box b { font-size: 26px; display: block; }
+.box p { font-size: 20px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+.agent { background: var(--ds-soft); border: 2px solid #C7D3FF; }
+.agent b { color: var(--ds); }
+.desk { background: #F4F5F9; border: 2px solid var(--line); }
+.swap { display: flex; align-items: center; justify-content: center; font-size: 34px; color: var(--muted); }
+
+/* Footer */
+.foot { margin-top: auto; padding-top: 24px; }
+.pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.pill {
+  background: var(--card); border: 2px solid var(--line); border-radius: 18px;
+  padding: 16px 10px; text-align: center; font-size: 23px; font-weight: 700;
+}
+.warn { margin-top: 16px; font-size: 20px; color: #B4441C; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="tag">DeepSeek Harness 插件 · dsh-plugin-discord</div>
+  <h1>在手机 <span class="dc">Discord</span> 里<br>遥控电脑上的 <span class="dsk">DeepSeek</span> Agent</h1>
+  <div class="sub">架构一图看懂：一条消息怎么从手机跑到你的电脑上</div>
+
+  <div class="card user">
+    <div class="who">📱 你<small>手机 / 电脑上的 Discord</small></div>
+    <div class="maps">
+      <div class="chip">私信 → 会话</div>
+      <div class="chip">频道 → 工作区</div>
+      <div class="chip">线程 → 会话</div>
+    </div>
+  </div>
+
+  <div class="link">
+    <div class="arrow down"><div class="label l">① 发消息 · 点审批按钮</div></div>
+    <div class="arrow up"><div class="label r">⑤ 回复 · 工具进度 · 审批卡片</div></div>
+  </div>
+
+  <div class="cloud">
+    <b>☁️ Discord 服务器</b>
+    <span>只负责转发消息</span>
+  </div>
+
+  <div class="link">
+    <div class="arrow out"><div class="label c">② Bot 从电脑<b>主动连出去</b>（WebSocket）<em>🔒 本机不开任何端口</em></div></div>
+  </div>
+
+  <div class="card mac">
+    <div class="titlebar">
+      <i class="dot" style="background:#FF5F57"></i><i class="dot" style="background:#FEBC2E"></i><i class="dot" style="background:#28C840"></i>
+      <b>你的电脑 · DeepSeek Harness 桌面端</b>
+      <span>同一个进程</span>
+    </div>
+    <div class="mac-body">
+      <div class="plugin">
+        <div class="plugin-head"><b>🧩 dsh-plugin-discord</b><span>插件直接跑在桌面端里</span></div>
+        <div class="grid">
+          <div class="cell">🛡️ 用户白名单 · 消息路由</div>
+          <div class="cell">🔗 频道 ↔ 会话 绑定</div>
+          <div class="cell">📝 会话事件 → Discord 消息</div>
+          <div class="cell">✅ 工具审批 两端竞速</div>
+        </div>
+      </div>
+
+      <div class="link">
+        <div class="arrow out down"><div class="label c">③ 调用 Host API · 和桌面端界面同一套</div></div>
+      </div>
+
+      <div class="row">
+        <div class="box agent">
+          <b>🤖 工作区 &amp; 会话</b>
+          <p>④ Agent 在本机干活<br>读写文件 · 执行命令 · 调 DeepSeek 模型</p>
+        </div>
+        <div class="swap">⇄</div>
+        <div class="box desk">
+          <b>🖥️ 桌面端界面</b>
+          <p>侧边栏实时出现同一个会话<br>两边都能输入、都能审批</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="pills">
+      <div class="pill">🔒 零端口暴露</div>
+      <div class="pill">🔁 两端同一个会话</div>
+      <div class="pill">⚡ 审批谁先点算谁的</div>
+    </div>
+    <div class="warn">⚠️ 等同远程 shell：务必设置用户白名单，只让自己的账号能用</div>
+  </div>
+</body>
+</html>
