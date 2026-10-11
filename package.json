@@ -2,8 +2,13 @@
   "name": "dsh-plugin-discord",
   "description": "Discord bridge for DeepSeek Harness: drive any Workspace Session from Discord on your phone or desktop",
   "version": "0.1.0",
-  "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tjiisztiuv/dsh-plugin-discord.git"
+  },
+  "homepage": "https://github.com/tjiisztiuv/dsh-plugin-discord#readme",
+  "bugs": "https://github.com/tjiisztiuv/dsh-plugin-discord/issues",
   "type": "module",
   "icon": "./icon.svg",
   "keywords": [
@@ -39,9 +44,12 @@
     "discord.js": "^14.27.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.4-0 <5",
-    "@deepseek-ai/dsh": ">=0.2.0-0 <0.3.0-0",
-    "@deepseek-ai/schemastery": ">=3.18.0-0 <4"
+    "@deepseek-ai/cordis": ">=4.0.4-0 <5 || ^4.0.5-0",
+    "@deepseek-ai/dsh": ">=0.2.0-0 <0.3.0-0 || >=0.2.1-0 <0.3.0-0",
+    "@deepseek-ai/schemastery": ">=3.18.0-0 <4 || ^3.18.5-0"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {

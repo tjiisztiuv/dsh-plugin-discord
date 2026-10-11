@@ -1,5 +1,7 @@
 # dsh-plugin-discord
 
+中文 | [English](README.en.md)
+
 DeepSeek Harness（dsh）的 Discord 桥接插件：在手机或 Mac 的 Discord 里，和 DeepSeek 客户端**任意一个工作区**里的会话对话、接入桌面端正在用的会话、审批工具调用、回答模型的提问、随时停止任务。
 
 ## 它怎么工作
@@ -30,14 +32,30 @@ Discord 侧的映射：
 
 > 私信 bot 的前提是你和 bot 在同一个服务器里。
 
-## 2. 构建插件
+## 2. 安装插件
+
+**方式 A：桌面端界面**——侧边栏「插件」页 → 安装 → 「插件包名」填 `dsh-plugin-discord` → 安装完成后点「立即启用」。
+
+**方式 B：命令行**（`dsh web` 或其他 profile）：
+
+```bash
+dsh plugin --profile <profile> add dsh-plugin-discord
+```
+
+<details>
+<summary>从源码安装（开发用）</summary>
 
 ```bash
 git clone https://github.com/tjiisztiuv/dsh-plugin-discord.git
 cd dsh-plugin-discord
 npm install      # 或 pnpm install
 npm run build    # 生成 lib/
+dsh plugin --profile <profile> add "$PWD"
 ```
+
+也可以在插件页的安装框里填这个目录的绝对路径。本地路径以 link 方式安装，之后修改代码只需 `npm run build` 再在插件页里重新启用（或重启）即可。
+
+</details>
 
 ## 3. 配置 token
 
@@ -48,19 +66,7 @@ token 不写进配置文件，而是通过 dsh 的凭据系统读取（默认变
 
 > `.env` 只在桌面端启动时读取一次：写入或修改后要**彻底退出（Cmd+Q）再重新打开**，只在插件页重新启用读不到新值。变量名要和配置里的 `tokenEnv` 完全一致。
 
-## 4. 安装进 DeepSeek 桌面端
-
-**方式 A：桌面端界面**——侧边栏「插件」页 → 安装 → 填插件目录的绝对路径，例如 `/Users/you/code/dsh-plugin-discord`。
-
-**方式 B：命令行**（`dsh web` 或其他 profile）：
-
-```bash
-dsh plugin --profile <profile> add /path/to/dsh-plugin-discord
-```
-
-本地路径以 link 方式安装，之后修改代码只需 `npm run build` 再在插件页里重新启用（或重启）即可。
-
-## 5. 填写配置（必须）
+## 4. 填写配置（必须）
 
 插件默认 `allowedUserIds` 为空，此时 bot **不会上线**（日志里会提示）。在 profile 自己的 `cordis.patch.yml` 里覆盖 `discord` 这一行，例如桌面端是 `~/.dsh/profiles/desktop/cordis.patch.yml`：
 
