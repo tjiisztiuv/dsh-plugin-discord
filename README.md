@@ -1,6 +1,8 @@
 # dsh-plugin-discord
 
-DeepSeek Harness（dsh）的 Discord 桥接插件：在手机或 Mac 的 Discord 里，和 DeepSeek 客户端**任意一个工作区**里的会话对话、接入桌面端正在用的会话、审批工具调用、随时停止任务。
+中文 | [English](README.en.md)
+
+DeepSeek Harness（dsh）的 Discord 桥接插件：在手机或 Mac 的 Discord 里，和 DeepSeek 客户端**任意一个工作区**里的会话对话、接入桌面端正在用的会话、审批工具调用、回答模型的提问、随时停止任务。
 
 ## 它怎么工作
 
@@ -9,6 +11,7 @@ DeepSeek Harness（dsh）的 Discord 桥接插件：在手机或 Mac 的 Discord
 - 从 Discord 新建的会话就是普通会话：立刻出现在桌面端侧边栏对应工作区下，用当前默认模型、默认 agent preset 和权限设置。
 - 在桌面端打开的会话也可以从 Discord 接入（`/attach`），两边任意一端输入，回复都会同步到 Discord。
 - 工具审批同时出现在 Discord（按钮）和桌面端，**谁先点算谁的**；Discord 先答时桌面端的审批框会自动收起。
+- 模型用 `ask_user_question` 提问时也一样：问题同时出现在 Discord 和桌面端，先答完的一方生效。
 - 不需要额外进程、不暴露任何端口，Discord bot 只做出站连接。
 
 Discord 侧的映射：
@@ -29,14 +32,30 @@ Discord 侧的映射：
 
 > 私信 bot 的前提是你和 bot 在同一个服务器里。
 
-## 2. 构建插件
+## 2. 安装插件
+
+**方式 A：桌面端界面**——侧边栏「插件」页 → 安装 → 「插件包名」填 `dsh-plugin-discord` → 安装完成后点「立即启用」。
+
+**方式 B：命令行**（`dsh web` 或其他 profile）：
+
+```bash
+dsh plugin --profile <profile> add dsh-plugin-discord
+```
+
+<details>
+<summary>从源码安装（开发用）</summary>
 
 ```bash
 git clone https://github.com/tjiisztiuv/dsh-plugin-discord.git
 cd dsh-plugin-discord
 npm install      # 或 pnpm install
 npm run build    # 生成 lib/
+dsh plugin --profile <profile> add "$PWD"
 ```
+
+也可以在插件页的安装框里填这个目录的绝对路径。本地路径以 link 方式安装，之后修改代码只需 `npm run build` 再在插件页里重新启用（或重启）即可。
+
+</details>
 
 ## 3. 配置 token
 
@@ -47,19 +66,7 @@ token 不写进配置文件，而是通过 dsh 的凭据系统读取（默认变
 
 > `.env` 只在桌面端启动时读取一次：写入或修改后要**彻底退出（Cmd+Q）再重新打开**，只在插件页重新启用读不到新值。变量名要和配置里的 `tokenEnv` 完全一致。
 
-## 4. 安装进 DeepSeek 桌面端
-
-**方式 A：桌面端界面**——侧边栏「插件」页 → 安装 → 填插件目录的绝对路径，例如 `/Users/you/code/dsh-plugin-discord`。
-
-**方式 B：命令行**（`dsh web` 或其他 profile）：
-
-```bash
-dsh plugin --profile <profile> add /path/to/dsh-plugin-discord
-```
-
-本地路径以 link 方式安装，之后修改代码只需 `npm run build` 再在插件页里重新启用（或重启）即可。
-
-## 5. 填写配置（必须）
+## 4. 填写配置（必须）
 
 插件默认 `allowedUserIds` 为空，此时 bot **不会上线**（日志里会提示）。在 profile 自己的 `cordis.patch.yml` 里覆盖 `discord` 这一行，例如桌面端是 `~/.dsh/profiles/desktop/cordis.patch.yml`：
 
@@ -88,6 +95,7 @@ dsh plugin --profile <profile> add /path/to/dsh-plugin-discord
 | `defaultWorkspace` | — | 频道没选工作区时使用的工作区 |
 | `timeZone` | 本机时区 | 随 prompt 发送的 IANA 时区 |
 | `approvals` | `race` | `race`：Discord 与桌面端同时可审批，先答者生效；`desktop`：只在桌面端审批 |
+| `questions` | `race` | `race`：模型提问（`ask_user_question`）同时发到 Discord 与桌面端，先答完者生效；`desktop`：只在桌面端回答 |
 | `toolCalls` | `compact` | `compact`：每轮一条可编辑的工具调用进度消息；`off`：不显示 |
 | `showReasoning` | `false` | 以引用格式显示模型思考过程 |
 | `mirrorDesktopInput` | `true` | 把在桌面端输入的消息同步到 Discord |
@@ -121,6 +129,17 @@ dsh plugin --profile <profile> add /path/to/dsh-plugin-discord
 
 斜杠命令的 workspace / session 参数都支持自动补全。全局命令首次注册后可能要等几分钟才出现在客户端里，期间可以先用文本命令。
 
+### 回答模型提问
+
+模型调用 `ask_user_question` 时，绑定的频道里会逐题出现问题卡片（一次问多个问题时答完一题出下一题）：
+
+- 单选：每个选项一个按钮，点一下即回答；`计划审阅`（plan mode 的 `exit_plan_mode`）里表示批准的选项是绿色按钮。
+- 多选：从下拉菜单里选一项或多项。
+- `✏️ 其他…` / `✏️ 回答…` 弹出输入框写文字回答；`跳过` 跳过这一题。
+- 也可以**直接发消息**回答：回复选项序号（多选用逗号分隔，如 `1,3`）、选项原文，或任意文字。问题等待回答期间，频道里的普通消息都会被当作回答。
+
+桌面端开着时两边同时可答，先答完的一方生效，另一边的卡片会自动收起；桌面端没开时只在 Discord 回答。限时提问（`tool-ask-user` 配置为 `mode: timed`）超时后模型会先继续工作，卡片显示「等待超时」。
+
 一个会话同一时间只绑定一个 Discord 位置：在别处 `/attach` 同一个会话时，原来的位置会收到「已转到 …」的提示。
 
 ## 安全须知
@@ -143,16 +162,17 @@ npm run typecheck:compat   # 用旁边的 deepseek-harness 源码校验 src/dsh.
 
 | 文件 | 职责 |
 |---|---|
-| `src/index.ts` | 插件入口：注入 Host 服务、订阅 `session/event` 与 `approval/request`、管理 bot 生命周期 |
-| `src/bridge.ts` | 与 Discord 无关的核心：频道↔会话绑定、发 prompt、渲染会话事件、审批竞速 |
+| `src/index.ts` | 插件入口：注入 Host 服务、订阅 `session/event`、`approval/request` 与 `user-questions/request`、管理 bot 生命周期 |
+| `src/bridge.ts` | 与 Discord 无关的核心：频道↔会话绑定、发 prompt、渲染会话事件、审批与提问竞速 |
 | `src/commands.ts` | 斜杠命令定义与命令实现（斜杠命令和 `!` 文本命令共用） |
 | `src/discord.ts` | discord.js 客户端：权限校验、消息路由、交互、按钮、发送队列实现 |
 | `src/state.ts` | 绑定关系的 JSON 持久化 |
 | `src/format.ts` | 分段（保持代码块完整）、工具调用摘要等纯函数 |
+| `src/questions.ts` | 提问卡片的布局、按钮/下拉/输入框与直接回复的解析 |
 | `src/dsh.ts` | 用到的 Harness Host API 结构类型 |
 
 ## 已知限制
 
-- `ask_user_question`（模型向用户提问）目前只在桌面端作答。
+- 限时提问超时后，补答只能在桌面端进行（Discord 卡片会提示）。
 - 回复在每个模型步骤结束后整段发送，不做逐字流式编辑。
 - token 写在 `~/.dsh/.env` 时需要彻底重启桌面端才会上线；写在 `~/.dsh/.credentials.yaml` 时在插件页重新启用即可。

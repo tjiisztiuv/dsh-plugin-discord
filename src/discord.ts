@@ -8,21 +8,29 @@ import {
   Client,
   Events,
   GatewayIntentBits,
+  ModalBuilder,
   Partials,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type AutocompleteInteraction,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Interaction,
   type Message,
+  type MessageActionRowComponentBuilder,
+  type ModalSubmitInteraction,
   type SendableChannels,
+  type StringSelectMenuInteraction,
   type TextBasedChannel,
 } from 'discord.js'
-import { BridgeError, type Bridge, type LoggerLike } from './bridge.ts'
+import { BridgeError, type Bridge, type LoggerLike, type QuestionInteractionResult } from './bridge.ts'
 import { CommandRouter, slashCommands, threadName, type CommandPlace } from './commands.ts'
 import type { Config } from './config.ts'
 import type { PromptPart } from './dsh.ts'
 import { truncate } from './format.ts'
-import type { ChatTransport, OutgoingMessage } from './transport.ts'
+import type { QuestionModal } from './questions.ts'
+import type { ChatTransport, OutgoingButton, OutgoingMessage } from './transport.ts'
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
 type ImageType = Extract<PromptPart, { type: 'image' }>['mediaType']
@@ -137,6 +145,11 @@ export class DiscordRuntime implements ChatTransport {
         const handled = await this.textCommand(place, text.slice(this.config.commandPrefix.length), message)
         if (handled) return
       }
+      // While the model waits on a question here, a plain message answers it.
+      if (this.bridge.answerQuestionText(place.channelId, text)) {
+        await message.react('✅').catch(() => undefined)
+        return
+      }
       const parts = await this.promptParts(message)
       if (parts.length === 0) return
       if (this.bridge.boundSession(place.channelId) !== undefined) {
@@ -241,8 +254,8 @@ export class DiscordRuntime implements ChatTransport {
     try {
       if (interaction.isAutocomplete()) {
         await (permitted && channel !== null ? this.autocomplete(interaction, channel) : interaction.respond([]))
-      } else if (interaction.isButton()) {
-        await (permitted ? this.button(interaction) : interaction.reply({ content: '无权操作。', ephemeral: true }))
+      } else if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
+        await (permitted ? this.component(interaction) : interaction.reply({ content: '无权操作。', ephemeral: true }))
       } else if (interaction.isChatInputCommand()) {
         if (!permitted || channel === null) {
           await interaction.reply({ content: '无权使用这个机器人（请把你的用户 ID 加入 allowedUserIds）。', ephemeral: true })
@@ -267,15 +280,33 @@ export class DiscordRuntime implements ChatTransport {
     }
   }
 
-  private async button(interaction: ButtonInteraction): Promise<void> {
-    const result = this.bridge.answerApproval(interaction.customId)
+  private async component(interaction: ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction): Promise<void> {
+    if (interaction.isButton()) {
+      const approval = this.bridge.answerApproval(interaction.customId)
+      if (approval === 'stale') {
+        await interaction.reply({ content: '这个审批已经处理过或已失效。', ephemeral: true })
+        return
+      }
+      if (approval === 'handled') {
+        // The bridge edits the card with the verdict; acknowledge without a new message.
+        await interaction.deferUpdate()
+        return
+      }
+    }
+    let result: QuestionInteractionResult
+    if (interaction.isStringSelectMenu()) result = this.bridge.answerQuestion(interaction.customId, { values: interaction.values })
+    else if (interaction.isModalSubmit()) result = this.bridge.answerQuestion(interaction.customId, { text: interaction.fields.getTextInputValue('answer') })
+    else result = this.bridge.answerQuestion(interaction.customId)
     if (result === 'foreign') return
     if (result === 'stale') {
-      await interaction.reply({ content: '这个审批已经处理过或已失效。', ephemeral: true })
-      return
+      await interaction.reply({ content: '这个问题已经回答过或已失效。', ephemeral: true })
+    } else if (result !== 'handled') {
+      if (!interaction.isModalSubmit()) await interaction.showModal(modal(result.modal))
+    } else if (interaction.isModalSubmit() && !interaction.isFromMessage()) {
+      await interaction.reply({ content: '✅ 已记录回答。', ephemeral: true })
+    } else {
+      await interaction.deferUpdate()
     }
-    // The bridge edits the card with the verdict; acknowledge without a new message.
-    await interaction.deferUpdate()
   }
 
   private async slash(interaction: ChatInputCommandInteraction, channel: TextBasedChannel): Promise<void> {
@@ -372,16 +403,47 @@ export class DiscordRuntime implements ChatTransport {
   }
 }
 
-/** @returns discord.js message options for one outgoing message. */
-function render(message: OutgoingMessage): { content: string; components: ActionRowBuilder<ButtonBuilder>[] } {
+const BUTTON_STYLES: Record<OutgoingButton['style'], ButtonStyle> = {
+  primary: ButtonStyle.Primary,
+  success: ButtonStyle.Success,
+  danger: ButtonStyle.Danger,
+  secondary: ButtonStyle.Secondary,
+}
+
+/** @returns discord.js message options for one outgoing message: the select menu, then buttons five per row. */
+export function render(message: OutgoingMessage): { content: string; components: ActionRowBuilder<MessageActionRowComponentBuilder>[] } {
+  const components: ActionRowBuilder<MessageActionRowComponentBuilder>[] = []
+  const select = message.select
+  if (select !== undefined) {
+    components.push(new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(new StringSelectMenuBuilder()
+      .setCustomId(select.id)
+      .setPlaceholder(select.placeholder)
+      .setMinValues(select.minValues)
+      .setMaxValues(select.maxValues)
+      .addOptions(select.options.map(option => ({ ...option })))))
+  }
   const buttons = message.buttons ?? []
-  const components = buttons.length === 0 ? [] : [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.map(button => new ButtonBuilder()
+  for (let start = 0; start < buttons.length; start += 5) {
+    components.push(new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(buttons.slice(start, start + 5).map(button => new ButtonBuilder()
       .setCustomId(button.id)
       .setLabel(button.label)
-      .setStyle(button.style === 'success' ? ButtonStyle.Success : button.style === 'danger' ? ButtonStyle.Danger : ButtonStyle.Secondary))),
-  ]
+      .setStyle(BUTTON_STYLES[button.style]))))
+  }
   return { content: message.content, components }
+}
+
+/** @returns the text-answer modal; its input id is `answer`. */
+export function modal(spec: QuestionModal): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(spec.id)
+    .setTitle(spec.title)
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder()
+      .setCustomId('answer')
+      .setLabel(spec.label)
+      .setPlaceholder(spec.placeholder)
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setMaxLength(4000)))
 }
 
 /** @returns a printable error message. */

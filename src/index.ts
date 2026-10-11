@@ -5,7 +5,8 @@
  * continued from Discord are ordinary Sessions: they appear live in the Desktop
  * sidebar, use the current default model and agent preset, and follow the same
  * approval policy. Discord threads and DMs bind to Sessions; Session events are
- * rendered back into the bound channel.
+ * rendered back into the bound channel, and tool approvals and model questions
+ * can be answered from either side.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -16,6 +17,8 @@ import type {
   ApprovalOutcomeLike,
   ApprovalRequestLike,
   CredentialsLike,
+  QuestionAnswerLike,
+  QuestionRequestLike,
   SessionControllerLike,
   SessionEventLike,
   SessionId,
@@ -44,6 +47,11 @@ declare module '@deepseek-ai/cordis' {
      * @mode waterfall
      */
     'approval/request'(request: ApprovalRequestLike, next: () => Promise<ApprovalOutcomeLike>): Promise<ApprovalOutcomeLike>
+    /**
+     * Mirror of `dsh-user-questions`' answerer waterfall (subset this plugin reads).
+     * @mode waterfall
+     */
+    'user-questions/request'(request: QuestionRequestLike, next: () => Promise<QuestionAnswerLike>): Promise<QuestionAnswerLike>
   }
 }
 
@@ -73,6 +81,7 @@ export function apply(ctx: Context, config: Config): void {
     bridge.handleSessionEvent(session.id, event)
   })
   ctx.on('approval/request', (request, next) => bridge.handleApproval(request, next), { prepend: true })
+  ctx.on('user-questions/request', (request, next) => bridge.handleQuestion(request, next), { prepend: true })
 
   ctx.effect(() => {
     const lifecycle = new AbortController()

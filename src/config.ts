@@ -5,6 +5,9 @@ import Schema from '@deepseek-ai/schemastery'
 /** How tool approvals reach Discord. */
 export type ApprovalMode = 'race' | 'desktop'
 
+/** How `ask_user_question` questions reach Discord. */
+export type QuestionMode = 'race' | 'desktop'
+
 /** How tool calls are reported in Discord. */
 export type ToolCallMode = 'off' | 'compact'
 
@@ -26,6 +29,8 @@ export interface Config {
   timeZone?: string
   /** `race`: Discord and Desktop both offer approvals, first answer wins. `desktop`: leave approvals to Desktop. */
   approvals: ApprovalMode
+  /** `race`: Discord and Desktop both offer model questions, first answer wins. `desktop`: leave them to Desktop. */
+  questions: QuestionMode
   /** Tool-call progress rendering. */
   toolCalls: ToolCallMode
   /** Render model reasoning blocks as quotes. */
@@ -65,6 +70,7 @@ export const Config: Schema<Config> = Schema.object({
   defaultWorkspace: Schema.string(),
   timeZone: Schema.string(),
   approvals: Schema.union(['race', 'desktop']).default('race'),
+  questions: Schema.union(['race', 'desktop']).default('race'),
   toolCalls: Schema.union(['off', 'compact']).default('compact'),
   showReasoning: Schema.boolean().default(false),
   mirrorDesktopInput: Schema.boolean().default(true),

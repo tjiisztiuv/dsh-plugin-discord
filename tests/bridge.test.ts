@@ -5,7 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Bridge, BridgeError } from '../src/bridge.ts'
 import { CommandRouter, type CommandPlace } from '../src/commands.ts'
 import { Config } from '../src/config.ts'
-import type { ApprovalOutcomeLike, ApprovalRequestLike, SessionControllerLike, SessionEventLike, WorkspaceLike } from '../src/dsh.ts'
+import type {
+  ApprovalOutcomeLike,
+  ApprovalRequestLike,
+  QuestionAnswerLike,
+  QuestionItemLike,
+  QuestionRequestLike,
+  SessionControllerLike,
+  SessionEventLike,
+  WorkspaceLike,
+} from '../src/dsh.ts'
 import { BindingStore } from '../src/state.ts'
 import type { ChatTransport, OutgoingMessage } from '../src/transport.ts'
 
@@ -207,5 +216,141 @@ describe('approvals', () => {
     const { bridge, transport } = await setup()
     await expect(bridge.handleApproval({ agent: { id: 'elsewhere' }, toolName: 'bash' }, async () => 'allowed-once')).resolves.toBe('allowed-once')
     expect(transport.log).toHaveLength(0)
+  })
+})
+
+describe('questions', () => {
+  const batch: QuestionItemLike[] = [
+    { id: 'mode', header: 'Mode', question: 'Which mode?', options: [{ label: 'Fast' }, { label: 'Safe', description: 'slower but reversible' }] },
+    { id: 'note', question: 'Anything else?' },
+  ]
+  const noDesktop = Object.assign(new Error('no user-questions answerer accepted the request'), { code: 'NO_PROVIDER' })
+  const timedOut = Object.assign(new Error('ask_user_question timed out before the user answered'), { code: 'ASK_TIMED_OUT' })
+
+  function request(questions = batch, signal?: AbortSignal): QuestionRequestLike {
+    return { agent: { id: 's-new-1' }, questions, ...(signal === undefined ? {} : { signal }) }
+  }
+
+  /** Desktop that waits until its request is withdrawn. */
+  function waitingDesktop(req: QuestionRequestLike): () => Promise<QuestionAnswerLike> {
+    return () => new Promise<QuestionAnswerLike>((_resolve, reject) => {
+      req.signal?.addEventListener('abort', () => { reject(new Error('withdrawn')) })
+    })
+  }
+
+  function card(transport: FakeTransport, text: string) {
+    return transport.log.find(entry => entry.op === 'send' && entry.message?.content.includes(text))
+  }
+
+  it('answers a batch card by card in Discord and withdraws the Desktop card', async () => {
+    const { bridge, router, transport } = await setup({ defaultWorkspace: 'app' })
+    await router.newSession(dm, [])
+    const req = request()
+    const pending = bridge.handleQuestion(req, waitingDesktop(req))
+    await settle()
+    const first = card(transport, 'Which mode?')
+    expect(first?.message?.content).toContain('slower but reversible')
+    expect(first?.message?.buttons?.map(button => button.label)).toEqual(['Fast', 'Safe', '✏️ 其他…', '跳过'])
+    expect(card(transport, 'Anything else?')).toBeUndefined()
+
+    const safe = first?.message?.buttons?.find(button => button.label === 'Safe')?.id ?? ''
+    expect(bridge.answerQuestion(safe)).toBe('handled')
+    expect(bridge.answerQuestion(safe)).toBe('stale')
+    await settle()
+    expect(card(transport, 'Anything else?')?.message?.content).toContain('（2/2）')
+    expect(bridge.answerQuestionText('elsewhere', 'ship it')).toBe(false)
+    expect(bridge.answerQuestionText('dm1', 'ship it today')).toBe(true)
+
+    await expect(pending).resolves.toEqual({ answers: [
+      { id: 'mode', selected: ['Safe'] },
+      { id: 'note', selected: [], custom: 'ship it today' },
+    ] })
+    expect(req.signal?.aborted).toBe(true)
+    await settle()
+    const firstEdit = transport.log.find(entry => entry.op === 'edit' && entry.messageId === first?.messageId)
+    expect(firstEdit?.message).toMatchObject({ buttons: [] })
+    expect(firstEdit?.message?.content).toContain('✅ Safe（Discord）')
+    expect(bridge.answerQuestionText('dm1', 'later message')).toBe(false)
+  })
+
+  it('takes a modal text answer and a multiple choice while Desktop is away', async () => {
+    const { bridge, router, transport } = await setup({ defaultWorkspace: 'app' })
+    await router.newSession(dm, [])
+    const questions: QuestionItemLike[] = [
+      { id: 'why', question: 'Why?' },
+      { id: 'langs', question: 'Which languages?', multiSelect: true, options: [{ label: 'TS' }, { label: 'Go' }, { label: 'Rust' }] },
+    ]
+    const pending = bridge.handleQuestion(request(questions), async () => { throw noDesktop })
+    await settle()
+    const write = card(transport, 'Why?')?.message?.buttons?.find(button => button.label === '✏️ 回答…')?.id ?? ''
+    const opened = bridge.answerQuestion(write)
+    expect(opened).toMatchObject({ modal: { label: 'Why?' } })
+    const modalId = typeof opened === 'object' ? opened.modal.id : ''
+    expect(bridge.answerQuestion(modalId, { text: 'because' })).toBe('handled')
+    await settle()
+    const select = card(transport, 'Which languages?')?.message?.select
+    expect(select?.maxValues).toBe(3)
+    expect(bridge.answerQuestion(select?.id ?? '', { values: ['0', '2'] })).toBe('handled')
+    await expect(pending).resolves.toEqual({ answers: [
+      { id: 'why', selected: [], custom: 'because' },
+      { id: 'langs', selected: ['TS', 'Rust'] },
+    ] })
+  })
+
+  it('accepts a Desktop answer and closes the Discord card', async () => {
+    const { bridge, router, transport } = await setup({ defaultWorkspace: 'app' })
+    await router.newSession(dm, [])
+    const answer: QuestionAnswerLike = { answers: [{ id: 'mode', selected: ['Fast'] }, { id: 'note', selected: [] }] }
+    let release!: () => void
+    const desktop = new Promise<void>((resolve) => { release = resolve })
+    const pending = bridge.handleQuestion(request(), async () => { await desktop; return answer })
+    await settle()
+    release()
+    await expect(pending).resolves.toBe(answer)
+    await settle()
+    expect(transport.log.at(-1)).toMatchObject({ op: 'edit', message: { buttons: [] } })
+    expect(transport.log.at(-1)?.message?.content).toContain('已在桌面端回答')
+  })
+
+  it('ends a timed question everywhere when the countdown runs out', async () => {
+    const { bridge, router, transport } = await setup({ defaultWorkspace: 'app' })
+    await router.newSession(dm, [])
+    let expire!: () => void
+    const countdown = new Promise<void>((resolve) => { expire = resolve })
+    const fromDesktop = bridge.handleQuestion(request(), async () => { await countdown; throw timedOut })
+    await settle()
+    expire()
+    await expect(fromDesktop).rejects.toBe(timedOut)
+    await settle()
+    expect(transport.log.at(-1)?.message?.content).toContain('等待超时')
+
+    // Without a Desktop claim the Host's own deadline aborts the request.
+    const host = new AbortController()
+    const fromHost = bridge.handleQuestion(request(batch, host.signal), async () => { throw noDesktop })
+    await settle()
+    host.abort(timedOut)
+    await expect(fromHost).rejects.toBe(timedOut)
+  })
+
+  it('fails with the Desktop error when the card cannot be posted', async () => {
+    const { bridge, router, transport } = await setup({ defaultWorkspace: 'app' })
+    await router.newSession(dm, [])
+    transport.send = async () => { throw new Error('Missing Access') }
+    const pending = bridge.handleQuestion(request(), async () => { throw noDesktop })
+    const outcome = expect(pending).rejects.toBe(noDesktop)
+    await settle()
+    await outcome
+  })
+
+  it('leaves unbound Sessions and desktop mode to Desktop', async () => {
+    const answer: QuestionAnswerLike = { answers: [] }
+    const unbound = await setup()
+    await expect(unbound.bridge.handleQuestion({ agent: { id: 'elsewhere' }, questions: batch }, async () => answer)).resolves.toBe(answer)
+    expect(unbound.transport.log).toHaveLength(0)
+
+    const desktopOnly = await setup({ defaultWorkspace: 'app', questions: 'desktop' })
+    await desktopOnly.router.newSession(dm, [])
+    await expect(desktopOnly.bridge.handleQuestion(request(), async () => answer)).resolves.toBe(answer)
+    expect(desktopOnly.transport.log.some(entry => entry.message?.content.includes('Which mode?'))).toBe(false)
   })
 })

@@ -10,12 +10,15 @@ import type { AgentRegistry } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome, ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import type { AskUserQuestionAnswer, AskUserQuestionRequestEvent } from '@deepseek-ai/dsh-user-questions/types'
 import type {} from '@deepseek-ai/dsh-session-title'
 import type { AgentsLike } from '../src/bridge.ts'
 import type {
   ApprovalOutcomeLike,
   ApprovalRequestLike,
   CredentialsLike,
+  QuestionAnswerLike,
+  QuestionRequestLike,
   SessionControllerLike,
   SessionEventLike,
   WorkspaceRegistryLike,
@@ -32,6 +35,9 @@ export type Checks = [
   Assert<Extends<ApprovalOutcomeLike, ApprovalOutcome>>,
   Assert<Extends<ApprovalRequestEvent, ApprovalRequestLike>>,
   Assert<Extends<CredentialProvider, CredentialsLike>>,
+  Assert<Extends<AskUserQuestionRequestEvent, QuestionRequestLike>>,
+  Assert<Extends<AskUserQuestionAnswer, QuestionAnswerLike>>,
+  Assert<Extends<QuestionAnswerLike, AskUserQuestionAnswer>>,
   // Each event this plugin renders keeps the fields it reads.
   Assert<Extends<SessionEvent<'turn/start'>, Extract<SessionEventLike, { type: 'turn/start' }>>>,
   Assert<Extends<SessionEvent<'turn/end'>, Extract<SessionEventLike, { type: 'turn/end' }>>>,

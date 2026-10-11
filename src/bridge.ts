@@ -1,7 +1,7 @@
 /**
  * Transport-neutral core: maps Discord channels to Harness Sessions, admits
  * prompts through `ctx.sessionController`, renders Session events, and offers
- * tool approvals. Every Discord write for one channel runs on that channel's
+ * tool approvals and model questions. Every Discord write for one channel runs on that channel's
  * serial queue so messages keep Session order.
  */
 
@@ -13,6 +13,10 @@ import {
   type ApprovalOutcomeLike,
   type ApprovalRequestLike,
   type PromptPart,
+  type QuestionAnswerItemLike,
+  type QuestionAnswerLike,
+  type QuestionItemLike,
+  type QuestionRequestLike,
   type SessionControllerLike,
   type SessionEventLike,
   type SessionId,
@@ -29,6 +33,18 @@ import {
   summarizeToolCall,
   truncate,
 } from './format.ts'
+import {
+  closedQuestionCard,
+  componentAnswer,
+  describeAnswer,
+  parseQuestionComponentId,
+  questionCard,
+  questionComponentId,
+  questionModal,
+  typedAnswer,
+  type QuestionInput,
+  type QuestionModal,
+} from './questions.ts'
 import type { BindingStore } from './state.ts'
 import type { ChatTransport, OutgoingMessage } from './transport.ts'
 
@@ -85,6 +101,23 @@ interface PendingApproval {
   readonly resolve: (outcome: ApprovalOutcomeLike) => void
 }
 
+/** One question batch answered card by card in Discord. */
+interface PendingQuestions {
+  readonly channelId: string
+  readonly questions: readonly QuestionItemLike[]
+  /** Answers so far; the card being answered is `answers.length`. */
+  readonly answers: QuestionAnswerItemLike[]
+  /** Posted card ids by question index, filled on the channel queue. */
+  readonly cardIds: (string | undefined)[]
+  /** Discord completed the batch. */
+  readonly complete: () => void
+  /** Discord can no longer answer (card not posted, bridge closing). */
+  readonly abandon: () => void
+}
+
+/** What the Discord runtime does after a question component fires. */
+export type QuestionInteractionResult = 'handled' | 'stale' | 'foreign' | { readonly modal: QuestionModal }
+
 const APPROVAL_PREFIX = 'dshap'
 const OWN_REQUEST_LIMIT = 500
 const TOOL_CALL_CACHE_LIMIT = 200
@@ -96,6 +129,7 @@ export class Bridge {
   private readonly ownRequests = new Set<string>()
   private readonly toolCalls = new Map<string, { name: string; arguments: string }>()
   private readonly approvals = new Map<string, PendingApproval>()
+  private readonly questions = new Map<string, PendingQuestions>()
   private closed = false
 
   constructor(private readonly deps: BridgeDeps) {}
@@ -581,6 +615,147 @@ export class Bridge {
     return 'handled'
   }
 
+  // --------------------------------------------------------------- questions
+
+  /**
+   * `user-questions/request` waterfall listener (`ask_user_question`). For a
+   * Discord-bound Session it posts one card per question and races the batch
+   * against Desktop (`next()`); the first complete answer wins and the other
+   * side's prompt is withdrawn. An absent Desktop leaves Discord to answer; a
+   * timed question's expiry, from Desktop's countdown or the Host's, ends the
+   * wait for both so the model continues.
+   */
+  async handleQuestion(request: QuestionRequestLike, next: () => Promise<QuestionAnswerLike>): Promise<QuestionAnswerLike> {
+    const sessionId = request.agent?.id
+    const channelId = sessionId === undefined ? undefined : this.deps.store.channelsOf(sessionId)[0]
+    const original = request.signal
+    if (this.closed || this.deps.config.questions !== 'race' || channelId === undefined || request.questions.length === 0
+      || this.deps.transport()?.ready !== true || original?.aborted === true) return next()
+
+    const discordAnswered = new AbortController()
+    if (!Object.isFrozen(request)) {
+      // Cooperative request mutation, as for approvals: Desktop reads `signal` to withdraw its card.
+      Object.assign(request, { signal: original === undefined ? discordAnswered.signal : AbortSignal.any([original, discordAnswered.signal]) })
+    }
+
+    type Settled =
+      | { readonly by: 'discord' | 'desktop'; readonly answer: QuestionAnswerLike }
+      | { readonly by: 'failed' | 'withdrawn'; readonly error: unknown }
+    let settle!: (settled: Settled) => void
+    const settledPromise = new Promise<Settled>((resolve) => { settle = resolve })
+    let desktopFailure: { readonly error: unknown } | undefined
+    let discordGone = false
+    const token = randomUUID().replace(/-/g, '').slice(0, 16)
+    const pending: PendingQuestions = {
+      channelId,
+      questions: request.questions,
+      answers: [],
+      cardIds: [],
+      complete: () => { settle({ by: 'discord', answer: { answers: [...pending.answers] } }) },
+      abandon: () => {
+        discordGone = true
+        if (desktopFailure !== undefined) settle({ by: 'failed', error: desktopFailure.error })
+      },
+    }
+    next().then(
+      answer => { settle({ by: 'desktop', answer }) },
+      (error: unknown) => {
+        // Without a connected Desktop answerer Discord keeps the question; a
+        // countdown that ran out ends it everywhere.
+        desktopFailure = { error }
+        if (discordGone || remoteErrorCode(error) === 'ASK_TIMED_OUT') settle({ by: 'failed', error })
+      },
+    )
+    const onAbort = (): void => { settle({ by: 'withdrawn', error: original?.reason }) }
+    original?.addEventListener('abort', onAbort, { once: true })
+    this.questions.set(token, pending)
+    this.postQuestion(token, pending)
+
+    const settled = await settledPromise
+    original?.removeEventListener('abort', onAbort)
+    this.questions.delete(token)
+    if (settled.by !== 'desktop') discordAnswered.abort(new Error('question answered in Discord'))
+    if ('answer' in settled) {
+      // Discord already closed each card as it was answered.
+      if (settled.by === 'desktop') this.editQuestionCard(pending, pending.answers.length, '🖥️ 已在桌面端回答')
+      return settled.answer
+    }
+    const { error } = settled
+    const verdict = remoteErrorCode(error) === 'ASK_TIMED_OUT'
+      ? '⏱️ 等待超时，模型先继续了；之后仍可在桌面端回答'
+      : settled.by === 'withdrawn'
+        ? '⚪ 问题已撤回'
+        : `⚠️ 无法在 Discord 回答：${error instanceof Error ? error.message : String(error)}`
+    this.editQuestionCard(pending, pending.answers.length, verdict)
+    throw error
+  }
+
+  /** Post the card of the question being answered, after any long detail. */
+  private postQuestion(token: string, pending: PendingQuestions): void {
+    const index = pending.answers.length
+    const { channelId } = pending
+    const card = questionCard(token, pending.questions, index)
+    if (card.detail !== undefined) this.postText(channelId, card.detail)
+    void this.enqueue(channelId, async (transport) => {
+      pending.cardIds[index] = await transport.send(channelId, card.message)
+    }).then(() => {
+      if (pending.cardIds[index] === undefined && this.questions.get(token) === pending) pending.abandon()
+    })
+  }
+
+  /** Replace a card's buttons with a closing line. */
+  private editQuestionCard(pending: PendingQuestions, index: number, verdict: string): void {
+    const { channelId } = pending
+    this.enqueue(channelId, async (transport) => {
+      const cardId = pending.cardIds[index]
+      if (cardId !== undefined) await transport.edit(channelId, cardId, closedQuestionCard(pending.questions, index, verdict))
+    })
+  }
+
+  /** Record one answer, then post the next card or complete the batch. */
+  private recordAnswer(token: string, pending: PendingQuestions, item: QuestionAnswerItemLike): void {
+    const index = pending.answers.length
+    pending.answers.push(item)
+    this.editQuestionCard(pending, index, `${describeAnswer(item)}（Discord）`)
+    if (pending.answers.length < pending.questions.length) this.postQuestion(token, pending)
+    else pending.complete()
+  }
+
+  /**
+   * Answer a question card component.
+   * @param customId - the button, select menu, or modal custom id.
+   * @param input - select values or modal text.
+   * @returns `handled` when recorded, a modal to show for a text answer,
+   * `stale` for an answered or expired card, `foreign` for other components.
+   */
+  answerQuestion(customId: string, input: QuestionInput = {}): QuestionInteractionResult {
+    const parsed = parseQuestionComponentId(customId)
+    if (parsed === undefined) return 'foreign'
+    const pending = this.questions.get(parsed.token)
+    const question = pending?.questions[parsed.index]
+    if (pending === undefined || question === undefined || parsed.index !== pending.answers.length) return 'stale'
+    if (parsed.action === 'txt') return { modal: questionModal(questionComponentId(parsed.token, parsed.index, 'modal'), question) }
+    const item = componentAnswer(question, parsed.action, input)
+    if (item === undefined) return 'stale'
+    this.recordAnswer(parsed.token, pending, item)
+    return 'handled'
+  }
+
+  /**
+   * Treat a chat message as the answer to the channel's open question.
+   * @returns whether a question was open and took the text.
+   */
+  answerQuestionText(channelId: string, text: string): boolean {
+    if (text.trim() === '') return false
+    for (const [token, pending] of this.questions) {
+      const question = pending.questions[pending.answers.length]
+      if (pending.channelId !== channelId || question === undefined) continue
+      this.recordAnswer(token, pending, typedAnswer(question, text))
+      return true
+    }
+    return false
+  }
+
   // ----------------------------------------------------------------- lifecycle
 
   /** Stop timers, drop pending cards (Desktop keeps answering them), and drain queued writes. */
@@ -592,6 +767,7 @@ export class Bridge {
     }
     this.turns.clear()
     this.approvals.clear()
+    for (const pending of this.questions.values()) pending.abandon()
     await Promise.allSettled([...this.queues.values()])
   }
 }

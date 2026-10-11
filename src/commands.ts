@@ -70,6 +70,7 @@ export class CommandRouter {
       `\`/new [prompt]\` 或 \`${p}new [内容]\` 新建会话　\`/sessions\` 或 \`${p}sessions\` 最近会话`,
       `\`/attach\` 或 \`${p}attach <序号>\` 接入已有会话　\`/detach\` 解绑`,
       `\`/stop\` 或 \`${p}stop\` 停止　\`/steer\` 或 \`${p}steer <内容>\` 运行中插话　\`/status\` 状态`,
+      '模型提问时：点卡片上的按钮，或直接回复选项序号 / 文字。',
     ].join('\n')
   }
 

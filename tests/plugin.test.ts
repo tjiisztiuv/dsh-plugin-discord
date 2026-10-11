@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import * as plugin from '../src/index.ts'
 
 describe('plugin wiring under Cordis', () => {
-  it('loads with Host services, stays offline without a token, and delegates approvals', async () => {
+  it('loads with Host services, stays offline without a token, and delegates approvals and questions', async () => {
     const ctx = new Context()
     const resolved: string[] = []
     ctx.provide('sessionController', {})
@@ -21,6 +21,8 @@ describe('plugin wiring under Cordis', () => {
 
     const outcome = await ctx.waterfall('approval/request', { agent: { id: 's1' }, toolName: 'bash' }, async () => 'unavailable' as const)
     expect(outcome).toBe('unavailable')
+    const answer = await ctx.waterfall('user-questions/request', { agent: { id: 's1' }, questions: [{ id: 'q', question: '?' }] }, async () => ({ answers: [] }))
+    expect(answer).toEqual({ answers: [] })
     ctx.emit('session/event', { id: 's1' }, { type: 'turn/start', data: { turn: 1 } })
     await fiber.dispose()
   })
