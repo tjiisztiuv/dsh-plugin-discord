@@ -4,6 +4,8 @@
 
 A Discord bridge for DeepSeek Harness (dsh): from Discord on your phone or Mac, chat with sessions in **any workspace** of the DeepSeek client, attach to the session you have open on the desktop, approve tool calls, answer the model's questions, and stop a run at any time.
 
+<img src="docs/question-card.png" width="420" alt="A model question in Discord on a phone: one button per option, plus Other and Skip">
+
 > The bot's messages in Discord (buttons, prompts, status lines) are currently in Chinese.
 
 ## How it works
