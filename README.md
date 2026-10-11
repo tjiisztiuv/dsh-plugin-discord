@@ -4,6 +4,8 @@
 
 DeepSeek Harness（dsh）的 Discord 桥接插件：在手机或 Mac 的 Discord 里，和 DeepSeek 客户端**任意一个工作区**里的会话对话、接入桌面端正在用的会话、审批工具调用、回答模型的提问、随时停止任务。
 
+<img src="docs/question-card.png" width="420" alt="手机 Discord 里的提问卡片：每个选项一个按钮，另有「其他…」和「跳过」">
+
 ## 它怎么工作
 
 插件是一个标准的 dsh **bundle**，装进 DeepSeek 桌面端（或 `dsh web`）的 profile 后，**直接运行在 Harness Host 进程里**，调用的是桌面端界面本身用的同一套 Host API（`ctx.sessionController`、`ctx.workspaceRegistry`）：
