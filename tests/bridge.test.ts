@@ -114,6 +114,20 @@ describe('sessions from Discord', () => {
     expect(transport.log).toContainEqual({ op: 'rename', channelId: 'thread1', name: 'Fix login bug' })
   })
 
+  it('switching Workspace releases a Session from another Workspace', async () => {
+    const { bridge, router, prompts } = await setup({ defaultWorkspace: 'app' })
+    await router.newSession(dm, [])
+    expect(bridge.boundSession('dm1')).toBe('s-new-1')
+    expect(router.useWorkspace(dm, 'app')).toContain('仍接着当前会话')
+    expect(bridge.boundSession('dm1')).toBe('s-new-1')
+    expect(router.useWorkspace(dm, 'api')).toContain('已解绑')
+    expect(bridge.boundSession('dm1')).toBeUndefined()
+    await router.newSession(dm, [{ type: 'text', text: 'next' }])
+    expect(bridge.boundSession('dm1')).toBe('s-new-2')
+    expect(bridge.boundWorkspace('dm1')?.id).toBe('w-api')
+    expect(prompts.at(-1)).toMatchObject({ sessionId: 's-new-2' })
+  })
+
   it('attaches an existing Session by list number', async () => {
     const { bridge, router } = await setup({ defaultWorkspace: 'app' })
     await router.listSessions(dm)

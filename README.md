@@ -109,7 +109,7 @@ dsh plugin --profile <profile> add /path/to/dsh-plugin-discord
 | 斜杠命令 | 文本命令 | 作用 |
 |---|---|---|
 | `/ws` | `!ws` | 列出工作区（👉 为当前默认） |
-| `/use workspace` | `!use <名称/序号>` | 设置这里新建会话用的工作区 |
+| `/use workspace` | `!use <名称/序号>` | 切换这里使用的工作区；如果这里绑定的会话属于别的工作区，会自动解绑，下一条消息在新工作区新建会话 |
 | `/new [prompt] [workspace]` | `!new [内容]` | 新建会话 |
 | `/sessions [workspace]` | `!sessions` | 最近会话（▶️ 运行中，📍 当前绑定） |
 | `/attach session` | `!attach <序号>` | 接入已有会话，例如桌面端正在跑的那个 |
