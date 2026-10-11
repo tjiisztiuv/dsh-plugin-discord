@@ -39,7 +39,7 @@ export function slashCommands(): ReturnType<SlashCommandBuilder['toJSON']>[] {
     .setIntegrationTypes(ApplicationIntegrationType.GuildInstall)
   return [
     base('ws', '列出 DeepSeek Harness 工作区'),
-    base('use', '设置这里新建会话默认使用的工作区')
+    base('use', '切换这里使用的工作区（会解绑别的工作区的会话）')
       .addStringOption(o => o.setName('workspace').setDescription('工作区').setRequired(true).setAutocomplete(true)),
     base('new', '新建会话（可直接带上第一条消息）')
       .addStringOption(o => o.setName('prompt').setDescription('第一条消息'))
@@ -66,7 +66,7 @@ export class CommandRouter {
     return [
       '**DeepSeek Harness · Discord**',
       '直接发消息 = 发给这里绑定的会话；没有绑定时会在默认工作区新建会话。',
-      `\`/ws\` 或 \`${p}ws\` 列出工作区　\`/use\` 或 \`${p}use <名称|序号>\` 选默认工作区`,
+      `\`/ws\` 或 \`${p}ws\` 列出工作区　\`/use\` 或 \`${p}use <名称|序号>\` 切换工作区`,
       `\`/new [prompt]\` 或 \`${p}new [内容]\` 新建会话　\`/sessions\` 或 \`${p}sessions\` 最近会话`,
       `\`/attach\` 或 \`${p}attach <序号>\` 接入已有会话　\`/detach\` 解绑`,
       `\`/stop\` 或 \`${p}stop\` 停止　\`/steer\` 或 \`${p}steer <内容>\` 运行中插话　\`/status\` 状态`,
@@ -82,11 +82,19 @@ export class CommandRouter {
     return ['**工作区**', ...rows, '', '用 `/use` 选择这里默认使用的工作区。'].join('\n')
   }
 
-  /** `/use` */
+  /**
+   * `/use`: choose the Workspace here. A binding to another Workspace's Session
+   * is released so the next message starts a Session in the chosen one.
+   */
   useWorkspace(place: CommandPlace, query: string): string {
     const ws = this.bridge.resolveWorkspace(query)
     this.bridge.useWorkspace(place.kind === 'thread' && place.parentId !== undefined ? place.parentId : place.channelId, ws)
-    return `📁 已选择工作区 **${ws.title}**（\`${ws.path}\`）。直接发消息即可新建会话。`
+    const picked = `📁 已选择工作区 **${ws.title}**（\`${ws.path}\`）`
+    const bound = this.bridge.boundWorkspace(place.channelId)
+    if (bound === undefined) return `${picked}。直接发消息即可新建会话。`
+    if (bound.id === ws.id) return `${picked}。这里仍接着当前会话，要另开新会话用 \`/new\`。`
+    this.bridge.detach(place.channelId)
+    return `${picked}。原来 **${bound.title}** 的会话已解绑（仍保留在桌面端），直接发消息即可在 **${ws.title}** 新建会话。`
   }
 
   /** `/sessions`; also caches the numbered list for `!attach <n>`. */

@@ -232,6 +232,16 @@ export class Bridge {
     return this.deps.store.binding(channelId)?.sessionId
   }
 
+  /**
+   * @returns the Workspace of the Session bound to a channel; a binding whose
+   * Workspace was removed yields a placeholder carrying the stored id.
+   */
+  boundWorkspace(channelId: string): Pick<WorkspaceLike, 'id' | 'title'> | undefined {
+    const binding = this.deps.store.binding(channelId)
+    if (binding === undefined) return undefined
+    return this.deps.workspaces.get(binding.workspaceId) ?? { id: binding.workspaceId, title: '（已移除的工作区）' }
+  }
+
   /** @returns whether the plugin created this thread for its current binding. */
   ownsThread(channelId: string): boolean {
     return this.deps.store.binding(channelId)?.ownsThread === true
