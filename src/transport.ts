@@ -4,16 +4,42 @@
 export interface OutgoingButton {
   /** Discord `custom_id`, at most 100 characters. */
   readonly id: string
+  /** At most 80 characters. */
   readonly label: string
-  readonly style: 'success' | 'danger' | 'secondary'
+  readonly style: 'primary' | 'success' | 'danger' | 'secondary'
+}
+
+/** One option of a select menu. */
+export interface OutgoingSelectOption {
+  /** At most 100 characters. */
+  readonly label: string
+  readonly value: string
+  /** At most 100 characters. */
+  readonly description?: string
+}
+
+/** A string select menu rendered above the buttons. */
+export interface OutgoingSelect {
+  /** Discord `custom_id`, at most 100 characters. */
+  readonly id: string
+  /** At most 150 characters. */
+  readonly placeholder: string
+  /** At most 25 options. */
+  readonly options: readonly OutgoingSelectOption[]
+  readonly minValues: number
+  readonly maxValues: number
 }
 
 /** One outgoing message body. */
 export interface OutgoingMessage {
   /** At most 2000 characters. */
   readonly content: string
-  /** Buttons rendered in one row; an empty list removes existing buttons on edit. */
+  /**
+   * Buttons laid out five per row, at most 25, or 20 with a select menu.
+   * An edit without buttons or a select menu removes existing components.
+   */
   readonly buttons?: readonly OutgoingButton[]
+  readonly select?: OutgoingSelect
 }
 
 /** Channel operations addressed by Discord channel id (DMs and threads included). */

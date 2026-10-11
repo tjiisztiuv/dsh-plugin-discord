@@ -100,6 +100,47 @@ export interface ApprovalRequestLike {
   readonly signal?: AbortSignal
 }
 
+/** One selectable answer (`dsh-user-questions` `AskUserQuestionOption`). */
+export interface QuestionOptionLike {
+  readonly label: string
+  readonly description?: string
+}
+
+/** One asked question (`AskUserQuestionItem`). */
+export interface QuestionItemLike {
+  /** Caller id echoed in the answer. */
+  readonly id: string
+  readonly question: string
+  /** Supporting detail, e.g. the plan under review. */
+  readonly detail?: string
+  readonly header?: string
+  readonly options?: readonly QuestionOptionLike[]
+  readonly multiSelect?: boolean
+  /** Presentation intent; `approve` names the affirmative option of a `plan-review`. */
+  readonly intent?: { readonly kind: string; readonly approve: string }
+}
+
+/** Answer to one question (`AskUserQuestionAnswerItem`); an empty `selected` without `custom` is a skip. */
+export interface QuestionAnswerItemLike {
+  id: string
+  selected: string[]
+  custom?: string
+}
+
+/** The human's answer batch (`AskUserQuestionAnswer`), one item per question. */
+export interface QuestionAnswerLike {
+  answers: QuestionAnswerItemLike[]
+}
+
+/** The `user-questions/request` waterfall request fields this plugin reads. */
+export interface QuestionRequestLike {
+  readonly questions: readonly QuestionItemLike[]
+  readonly agent?: { readonly id: SessionId }
+  readonly signal?: AbortSignal
+  /** Tool call the Desktop card is keyed by; `timed` marks a foreground wait with a countdown. */
+  readonly wait?: { readonly callId: string; readonly timed?: boolean }
+}
+
 /** `ctx.credentials` resolution. */
 export interface CredentialsLike {
   resolve(ref: string): Promise<{ readonly value: string } | undefined>
